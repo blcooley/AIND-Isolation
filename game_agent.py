@@ -154,7 +154,8 @@ class CustomPlayer:
             method = self.alphabeta
 
         score = None
-        move = None
+        move = legal_moves[0]
+        last_depth = 1
         try:
             # The search method call (alpha beta or minimax) should happen in
             # here in order to avoid timeout. The try/except block will
@@ -162,9 +163,13 @@ class CustomPlayer:
             # when the timer gets close to expiring
             if self.iterative:
                 for d in range(1, 99):
-                    score, move = method(game, d)
+                    score, move_returned = method(game, d)
+                    if move_returned != (-1, -1): move = move_returned
+                    last_depth = d
             else:
-                score, move = method(game, self.search_depth)
+                score, move_returned = method(game, self.search_depth)
+                if move_returned != (-1, -1): move = move_returned
+
 
         except Timeout:
             # Handle any actions required at timeout, if necessary
@@ -207,17 +212,11 @@ class CustomPlayer:
 
         moves = [move for move in game.get_legal_moves()]
         if not moves or len(moves) == 0:
-            return float("-inf"), (-1, -1)
+            return self.score(game, self), (-1, -1)
 
         move_score_pairs = None
         if depth == 1:
-            player = None
-            if maximizing_player:
-                player = game.active_player
-            else:
-                player = game.inactive_player
-
-            move_score_pairs = [(self.score(game.forecast_move(move), player), move) \
+            move_score_pairs = [(self.score(game.forecast_move(move), self), move) \
                                 for move in moves]
         else:
             move_score_pairs = [(self.minimax(game.forecast_move(move), depth-1, not maximizing_player)[0], \
@@ -270,7 +269,7 @@ class CustomPlayer:
 
         moves = game.get_legal_moves()
         if not moves or len(moves) == 0:
-            return float("-inf"), (-1, -1)
+            return self.score(game, self), (-1, -1)
 
         move_to_return = moves[0]
         if maximizing_player:
@@ -278,7 +277,7 @@ class CustomPlayer:
 
             for move in moves:
                 if depth == 1:
-                    newval = self.score(game.forecast_move(move), game.active_player)
+                    newval = self.score(game.forecast_move(move), self)
                 else:
                     newval = self.alphabeta(game.forecast_move(move), depth-1, alpha, beta, not maximizing_player)[0]
                 if val < newval:
@@ -291,7 +290,7 @@ class CustomPlayer:
             val = float("inf")
             for move in moves:
                 if depth == 1:
-                    newval = self.score(game.forecast_move(move), game.active_player)
+                    newval = self.score(game.forecast_move(move), self)
                 else:
                     newval = self.alphabeta(game.forecast_move(move), depth-1, alpha, beta, not maximizing_player)[0]
                 if val > newval:
