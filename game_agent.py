@@ -18,9 +18,6 @@ def custom_score(game, player):
     """Calculate the heuristic value of a game state from the point of view
     of the given player.
 
-    Note: this function should be called from within a Player instance as
-    `self.score()` -- you should not need to call this function directly.
-
     Parameters
     ----------
     game : `isolation.Board`
@@ -32,14 +29,35 @@ def custom_score(game, player):
         one of the player objects `game.__player_1__` or `game.__player_2__`.)
 
     Returns
-    -------
+    ----------
     float
         The heuristic value of the current game state to the specified player.
     """
 
-    # TODO: finish this function!
-    raise NotImplementedError
+    # This custom score will give 3 for each legal move but penalize edge
+    # moves by 1 and corner moves by 2 because of their limited moves on
+    # subsequent boards.
+    #
+    # For a 4x4 board, the value of a move to a square would look like:
+    #
+    #  1221
+    #  2332
+    #  2332
+    #  1221
 
+    if game.is_loser(player):
+        return float("-inf")
+
+    if game.is_winner(player):
+        return float("inf")
+
+    moves = game.get_legal_moves(player)
+    score = float(len(moves) \
+                  - len([1 for (x,y) in moves if x == 0]) \
+                  - len([1 for (x,y) in moves if y == 0]) \
+                  - len([1 for (x,y) in moves if x == game.width - 1]) \
+                  - len([1 for (x,y) in moves if y == game.height - 1]))
+    return score
 
 class CustomPlayer:
     """Game-playing agent that chooses a move using your evaluation function
@@ -110,7 +128,7 @@ class CustomPlayer:
             the game.
 
         Returns
-        -------
+        ----------
         (int, int)
             Board coordinates corresponding to a legal move; may return
             (-1, -1) if there are no available legal moves.
@@ -121,22 +139,39 @@ class CustomPlayer:
         # TODO: finish this function!
 
         # Perform any required initializations, including selecting an initial
+
         # move from the game board (i.e., an opening book), or returning
         # immediately if there are no legal moves
 
+        if not legal_moves or len(legal_moves) == 0:
+            return (-1, -1)
+        elif self.time_left() < self.TIMER_THRESHOLD:
+            return legal_moves[0]
+
+        if self.method == 'minimax':
+            method = self.minimax
+        else:
+            method = self.alphabeta
+
+        score = None
+        move = None
         try:
             # The search method call (alpha beta or minimax) should happen in
             # here in order to avoid timeout. The try/except block will
             # automatically catch the exception raised by the search method
             # when the timer gets close to expiring
-            pass
+            if self.iterative:
+                for d in range(1, 99):
+                    score, move = method(game, d)
+            else:
+                score, move = method(game, self.search_depth)
 
         except Timeout:
             # Handle any actions required at timeout, if necessary
-            pass
+            return move
 
         # Return the best move from the last completed search iteration
-        raise NotImplementedError
+        return move
 
     def minimax(self, game, depth, maximizing_player=True):
         """Implement the minimax search algorithm as described in the lectures.
@@ -156,24 +191,42 @@ class CustomPlayer:
             maximizing layer (True) or a minimizing layer (False)
 
         Returns
-        -------
+        ----------
         float
             The score for the current search branch
 
         tuple(int, int)
             The best move for the current branch; (-1, -1) for no legal moves
-
-        Notes
-        -----
-            (1) You MUST use the `self.score()` method for board evaluation
-                to pass the project unit tests; you cannot call any other
-                evaluation function directly.
         """
+
         if self.time_left() < self.TIMER_THRESHOLD:
             raise Timeout()
 
-        # TODO: finish this function!
-        raise NotImplementedError
+        if depth == 0:
+            raise ValueError("depth must be strictly greater than zero.")
+
+        moves = [move for move in game.get_legal_moves()]
+        if not moves or len(moves) == 0:
+            return float("-inf"), (-1, -1)
+
+        move_score_pairs = None
+        if depth == 1:
+            player = None
+            if maximizing_player:
+                player = game.active_player
+            else:
+                player = game.inactive_player
+
+            move_score_pairs = [(self.score(game.forecast_move(move), player), move) \
+                                for move in moves]
+        else:
+            move_score_pairs = [(self.minimax(game.forecast_move(move), depth-1, not maximizing_player)[0], \
+                                 move) for move in moves]
+
+        if maximizing_player:
+            return max(move_score_pairs, key = lambda x: x[0])
+        else:
+            return min(move_score_pairs, key = lambda x: x[0])
 
     def alphabeta(self, game, depth, alpha=float("-inf"), beta=float("inf"), maximizing_player=True):
         """Implement minimax search with alpha-beta pruning as described in the
@@ -200,21 +253,51 @@ class CustomPlayer:
             maximizing layer (True) or a minimizing layer (False)
 
         Returns
-        -------
+        ----------
         float
             The score for the current search branch
 
         tuple(int, int)
             The best move for the current branch; (-1, -1) for no legal moves
-
-        Notes
-        -----
-            (1) You MUST use the `self.score()` method for board evaluation
-                to pass the project unit tests; you cannot call any other
-                evaluation function directly.
         """
+
+
         if self.time_left() < self.TIMER_THRESHOLD:
             raise Timeout()
 
-        # TODO: finish this function!
-        raise NotImplementedError
+        if depth == 0:
+            raise ValueError("depth must be strictly greater than zero.")
+
+        moves = game.get_legal_moves()
+        if not moves or len(moves) == 0:
+            return float("-inf"), (-1, -1)
+
+        move_to_return = moves[0]
+        if maximizing_player:
+            val = float("-inf")
+
+            for move in moves:
+                if depth == 1:
+                    newval = self.score(game.forecast_move(move), game.active_player)
+                else:
+                    newval = self.alphabeta(game.forecast_move(move), depth-1, alpha, beta, not maximizing_player)[0]
+                if val < newval:
+                    val = newval
+                    move_to_return = move
+                if val >= beta:
+                    return val, move
+                alpha = max(alpha, val)
+        else:
+            val = float("inf")
+            for move in moves:
+                if depth == 1:
+                    newval = self.score(game.forecast_move(move), game.active_player)
+                else:
+                    newval = self.alphabeta(game.forecast_move(move), depth-1, alpha, beta, not maximizing_player)[0]
+                if val > newval:
+                    val = newval
+                    move_to_return = move
+                if val <= alpha:
+                    return val, move
+                beta = min(beta, val)
+        return val, move_to_return
