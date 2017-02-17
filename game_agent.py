@@ -7,7 +7,7 @@ You must test your agent's strength against a set of agents with known
 relative strength using tournament.py and include the results in your report.
 """
 import random
-
+import math
 
 class Timeout(Exception):
     """Subclass base exception for code clarity."""
@@ -33,7 +33,45 @@ def custom_score(game, player):
     float
         The heuristic value of the current game state to the specified player.
     """
+    if game.is_loser(player):
+        return float("-inf")
 
+    if game.is_winner(player):
+        return float("inf")
+
+    return 0. #near_middle(game, player)
+
+__middlex__ = None
+__middley__ = None
+
+def middlex(game):
+    global __middlex__
+    if not __middlex__:
+        __middlex__ = float(game.width)/2.0
+    return __middlex__
+
+def middley(game):
+    global __middley__
+    if not __middley__:
+        __middley__ = float(game.width)/2.0
+    return __middley__
+
+def penalize_moves(moves, game):
+    score = float(len(moves) \
+                  - len([1 for (x,y) in moves if x == 0]) \
+                  - len([1 for (x,y) in moves if y == 0]) \
+                  - len([1 for (x,y) in moves if x == game.width - 1]) \
+                  - len([1 for (x,y) in moves if y == game.height - 1]))
+    return score
+
+def near_middle(game, player):
+    moves = game.get_legal_moves(player)
+    score = sum([-(math.pow(x-middlex(game), 2)-(math.pow(y-middley(game), 2))) \
+                 for x, y in moves])
+    return score
+
+
+def penalize_edges(game, player):
     # This custom score will give 3 for each legal move but penalize edge
     # moves by 1 and corner moves by 2 because of their limited moves on
     # subsequent boards.
@@ -45,19 +83,26 @@ def custom_score(game, player):
     #  2332
     #  1221
 
-    if game.is_loser(player):
-        return float("-inf")
-
-    if game.is_winner(player):
-        return float("inf")
-
     moves = game.get_legal_moves(player)
-    score = float(len(moves) \
-                  - len([1 for (x,y) in moves if x == 0]) \
-                  - len([1 for (x,y) in moves if y == 0]) \
-                  - len([1 for (x,y) in moves if x == game.width - 1]) \
-                  - len([1 for (x,y) in moves if y == game.height - 1]))
-    return score
+    return penalize_moves(moves, game)
+
+def penalize_edges_overlay_moves(game, player):
+    # This custom score computes the edge penaly for each
+    # set of moves (player and opponent) and takes the
+    # difference
+
+    own_moves = game.get_legal_moves(player)
+    opp_moves = game.get_legal_moves(game.get_opponent(player))
+    return penalize_moves(own_moves, game) - penalize_moves(opp_moves, game)
+
+def square_move_diff(game, player):
+    # This custom score is similar to the sample player "improved_score"
+    # but scores with the square of the difference of moves reflecting the
+    # increased likelihood of getting trapped
+
+    own_moves = len(game.get_legal_moves(player))
+    opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
+    return math.pow(own_moves,2) - math.pow(opp_moves, 2)
 
 class CustomPlayer:
     """Game-playing agent that chooses a move using your evaluation function
@@ -94,6 +139,7 @@ class CustomPlayer:
         self.search_depth = search_depth
         self.iterative = iterative
         self.score = score_fn
+        print(score_fn)
         self.method = method
         self.time_left = None
         self.TIMER_THRESHOLD = timeout
