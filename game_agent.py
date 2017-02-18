@@ -94,6 +94,14 @@ def increase_own_moves_score(game, player):
     opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
     return 2.0*own_moves - opp_moves
 
+def increase_opponent_move_penalty_near_endgame(game, player):
+    own_moves = len(game.get_legal_moves(player))
+    opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
+    theta = 2.0
+    if game.move_count > 25:
+        theta = 0.5
+    return theta*own_moves - opp_moves
+
 class CustomPlayer:
     """Game-playing agent that chooses a move using your evaluation function
     and a depth-limited minimax algorithm with alpha-beta pruning. You must
