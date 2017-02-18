@@ -40,7 +40,7 @@ def custom_score(game, player):
     if game.is_winner(player):
         return float("inf")
 
-    return increase_opponent_move_penalty_near_endgame(game, player)
+    return penalize_edges(game, player)
 
 def improved_score(game, player):
     own_moves = len(game.get_legal_moves(player))
