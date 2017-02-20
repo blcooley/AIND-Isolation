@@ -40,15 +40,36 @@ def custom_score(game, player):
     if game.is_winner(player):
         return float("inf")
 
-    return penalize_edges(game, player)
-
-def improved_score(game, player):
-    own_moves = len(game.get_legal_moves(player))
-    opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
-    return float(own_moves - opp_moves)
-
+#    return increase_own_moves_score(game, player)
+    return increase_opponent_move_penalty_near_endgame(game, player)
+#    return square_move_diff(game, player)
 
 def penalize_moves(moves, game):
+    """This custom score will give 3 for each legal move but penalize edge
+    moves by 1 and corner moves by 2 because of their limited moves on
+    subsequent boards. To be used in penalize_edges_overlay_moves and
+    penalize_edges
+
+    For a 4x4 board, the value of a move to a square would look like:
+
+    1221
+    2332
+    2332
+    1221
+
+    Parameters
+    ----------
+    moves : a list of two-tuples representing moves [(1, 2), (-1, 2)], etc.
+
+    game : `isolation.Board`
+        An instance of `isolation.Board` encoding the current state of the
+        game (e.g., player locations and blocked cells).
+
+    Returns
+    ----------
+    float
+        The heuristic value for a set of moves
+    """
     score = float(len(moves) \
                   - len([1 for (x,y) in moves if x == 0]) \
                   - len([1 for (x,y) in moves if y == 0]) \
@@ -57,17 +78,7 @@ def penalize_moves(moves, game):
     return score
 
 def penalize_edges(game, player):
-    # This custom score will give 3 for each legal move but penalize edge
-    # moves by 1 and corner moves by 2 because of their limited moves on
-    # subsequent boards.
-    #
-    # For a 4x4 board, the value of a move to a square would look like:
-    #
-    #  1221
-    #  2332
-    #  2332
-    #  1221
-
+    # This custom score computes the heuristic as explained in penalize_moves
     moves = game.get_legal_moves(player)
     return penalize_moves(moves, game)
 
@@ -90,16 +101,23 @@ def square_move_diff(game, player):
     return math.pow(own_moves,2) - math.pow(opp_moves, 2)
 
 def increase_own_moves_score(game, player):
+    # This custom score is similar to the improved score, but we double
+    # the value of the player's moves
+
     own_moves = len(game.get_legal_moves(player))
     opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
-    return 2.0*own_moves - opp_moves
+    return 1.3*own_moves - opp_moves
 
 def increase_opponent_move_penalty_near_endgame(game, player):
+    # This custom score is similar to increase_own_moves_score but
+    # changes the coefficient near the endgame to emphasize reducing
+    # the opponent's move
+
     own_moves = len(game.get_legal_moves(player))
     opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
-    theta = 2.0
+    theta = 1.3
     if game.move_count > 25:
-        theta = 0.5
+        theta = 0.75
     return theta*own_moves - opp_moves
 
 class CustomPlayer:
@@ -137,7 +155,6 @@ class CustomPlayer:
         self.search_depth = search_depth
         self.iterative = iterative
         self.score = score_fn
-        print(score_fn)
         self.method = method
         self.time_left = None
         self.TIMER_THRESHOLD = timeout
@@ -180,16 +197,12 @@ class CustomPlayer:
 
         self.time_left = time_left
 
-        # TODO: finish this function!
-
-        # Perform any required initializations, including selecting an initial
-
-        # move from the game board (i.e., an opening book), or returning
-        # immediately if there are no legal moves
-
+        # Return (-1, -1) when there are no available moves
         if not legal_moves or len(legal_moves) == 0:
             return (-1, -1)
         elif self.time_left() < self.TIMER_THRESHOLD:
+            # If we just ran out of time, we want to take one of the
+            # moves, so quickly return the first one
             return legal_moves[0]
 
         if self.method == 'minimax':
@@ -197,19 +210,13 @@ class CustomPlayer:
         else:
             method = self.alphabeta
 
-        score = None
         move = legal_moves[0]
-        last_depth = 1
         try:
-            # The search method call (alpha beta or minimax) should happen in
-            # here in order to avoid timeout. The try/except block will
-            # automatically catch the exception raised by the search method
-            # when the timer gets close to expiring
+            # Iterative deepening or fixed depth below
             if self.iterative:
                 for d in range(1, 99):
                     score, move_returned = method(game, d)
                     if move_returned != (-1, -1): move = move_returned
-                    last_depth = d
             else:
                 score, move_returned = method(game, self.search_depth)
                 if move_returned != (-1, -1): move = move_returned
@@ -254,10 +261,13 @@ class CustomPlayer:
         if depth == 0:
             raise ValueError("depth must be strictly greater than zero.")
 
+        # If we are at a leaf that is a win for a player, return the score
         moves = [move for move in game.get_legal_moves()]
         if not moves or len(moves) == 0:
             return self.score(game, self), (-1, -1)
 
+        # For a fixed depth of 1, we just return the score for each move.
+        # For a deeper depth, we recurse by expanding each leaf
         move_score_pairs = None
         if depth == 1:
             move_score_pairs = [(self.score(game.forecast_move(move), self), move) \
@@ -324,9 +334,12 @@ class CustomPlayer:
                     newval = self.score(game.forecast_move(move), self)
                 else:
                     newval = self.alphabeta(game.forecast_move(move), depth-1, alpha, beta, not maximizing_player)[0]
+                # Check if the newval is more than the stored val
+                # If so, update the move to return
                 if val < newval:
                     val = newval
                     move_to_return = move
+                # If we have a new max, update beta
                 if val >= beta:
                     return val, move
                 alpha = max(alpha, val)
@@ -337,9 +350,12 @@ class CustomPlayer:
                     newval = self.score(game.forecast_move(move), self)
                 else:
                     newval = self.alphabeta(game.forecast_move(move), depth-1, alpha, beta, not maximizing_player)[0]
+                # Check if the newval is less than the stored val
+                # If so, update the move to return
                 if val > newval:
                     val = newval
                     move_to_return = move
+                # If we have a new min, update alpha
                 if val <= alpha:
                     return val, move
                 beta = min(beta, val)
